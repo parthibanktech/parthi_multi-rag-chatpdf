@@ -170,23 +170,40 @@ def main():
     # Sidebar: upload, process, and stable input
     with st.sidebar:
         st.header("📂 Upload your PDFs")
+        st.caption("⚠️ Max 50MB per file for best performance")
         docs = st.file_uploader("Drag and drop files here", accept_multiple_files=True, type=["pdf"])
 
         if st.button("Process"):
             if not docs:
                 st.warning("Please upload at least one PDF file.")
             else:
-                with st.spinner("Processing PDFs..."):
-                    text = get_pdf_text(docs)
-                    chunks = chunk_text(text)
-                    if not chunks:
-                        add_msg("bot", "⚠️ No readable text found in PDFs.")
-                    else:
-                        embeds = embed_texts(chunks)
-                        index = build_index(embeds)
-                        st.session_state.index = index
-                        st.session_state.chunks = chunks
-                        add_msg("bot", f"✅ Processed {len(docs)} file(s) into {len(chunks)} chunks.")
+                # Validate file sizes
+                MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB in bytes
+                oversized_files = [doc.name for doc in docs if doc.size > MAX_FILE_SIZE]
+                
+                if oversized_files:
+                    st.error(f"❌ Files too large (max 50MB): {', '.join(oversized_files)}")
+                    st.info("💡 Try splitting large PDFs or use smaller files.")
+                else:
+                    try:
+                        with st.spinner("Processing PDFs..."):
+                            text = get_pdf_text(docs)
+                            if not text.strip():
+                                add_msg("bot", "⚠️ No readable text found in PDFs. Please check if PDFs are text-based (not scanned images).")
+                            else:
+                                chunks = chunk_text(text)
+                                if not chunks:
+                                    add_msg("bot", "⚠️ Could not create text chunks. PDF might be empty.")
+                                else:
+                                    embeds = embed_texts(chunks)
+                                    index = build_index(embeds)
+                                    st.session_state.index = index
+                                    st.session_state.chunks = chunks
+                                    add_msg("bot", f"✅ Processed {len(docs)} file(s) into {len(chunks)} chunks.")
+                                    st.success(f"✅ Ready! Processed {len(chunks)} chunks from {len(docs)} file(s).")
+                    except Exception as e:
+                        st.error(f"❌ Error processing PDFs: {str(e)}")
+                        add_msg("bot", f"⚠️ Error: {str(e)}")
 
         st.markdown("---")
         st.markdown("💡 Ask questions below.")
