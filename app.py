@@ -74,9 +74,29 @@ def answer_question(question, retrieved):
     ctx = "\n\n".join(
         [f"[Source {i + 1}]\n{textwrap.shorten(c, 800)}" for i, c in enumerate(retrieved)]
     )
+    
+    system_prompt = """You are an expert AI assistant that provides clear, well-structured answers based on PDF documents.
+
+FORMATTING GUIDELINES:
+- Use clear headings and sections
+- Use bullet points for lists
+- Use numbered lists for steps or sequences
+- Use **bold** for important terms
+- Use code blocks for code examples
+- Keep paragraphs concise and readable
+- Cite sources when relevant [Source N]
+
+ANSWER STRUCTURE:
+1. Start with a direct answer to the question
+2. Provide supporting details with proper formatting
+3. Include relevant examples or code if applicable
+4. End with a summary or key takeaway if helpful
+
+Always base your answer ONLY on the provided context. If the context doesn't contain enough information, say so clearly."""
+
     messages = [
-        {"role": "system", "content": "You are a helpful assistant that answers based only on the PDF context."},
-        {"role": "user", "content": f"CONTEXT:\n{ctx}\n\nQUESTION:\n{question}"},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"CONTEXT:\n{ctx}\n\nQUESTION:\n{question}\n\nProvide a well-structured, formatted answer:"},
     ]
     res = client.chat.completions.create(model=CHAT_MODEL, messages=messages, temperature=0.2)
     return res.choices[0].message.content.strip()
@@ -100,30 +120,36 @@ def render_messages_iframe(iframe_height=800):
     Renders messages into an HTML string and displays via components.html.
     The embedded script will auto-scroll the chat box to the bottom.
     """
+    import html
+    
     # Build messages HTML
     msgs_html = ""
     for m in st.session_state.msgs:
+        # Escape HTML characters to prevent breaking the layout, JS will unescape and parse markdown
+        safe_text = html.escape(m["text"])
+        
         if m["role"] == "bot":
             msgs_html += (
                 "<div class='msg-row'>"
                 "<div class='avatar bot'>🤖</div>"
-                f"<div class='bubble bot'>{m['text']}</div>"
+                f"<div class='bubble bot' data-markdown='true'>{safe_text}</div>"
                 "</div>\n"
             )
         else:
             msgs_html += (
                 "<div class='msg-row user'>"
-                f"<div class='bubble user'>{m['text']}</div>"
+                f"<div class='bubble user'>{safe_text}</div>"
                 "<div class='avatar user'>YOU</div>"
                 "</div>\n"
             )
 
     # Full HTML: CSS + messages + JS to auto-scroll to bottom
-    html = f"""
+    html_content = f"""
     <!doctype html>
     <html>
       <head>
         <meta charset="utf-8"/>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <style>
           body {{ margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: white; }}
           .wrap {{ padding: 18px 24px; box-sizing: border-box; }}
@@ -133,9 +159,26 @@ def render_messages_iframe(iframe_height=800):
           .avatar {{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:600; margin:0 10px; flex-shrink:0; }}
           .avatar.bot {{ background: #dbeafe; color:#0b3a78; }}
           .avatar.user {{ background: #0b93f6; color:#fff; }}
-          .bubble {{ padding:10px 14px; border-radius:12px; max-width:70%; line-height:1.4; font-size:15px; word-break:break-word; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }}
+          .bubble {{ padding:10px 14px; border-radius:12px; max-width:75%; line-height:1.5; font-size:15px; word-break:break-word; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }}
           .bubble.bot {{ background:#edf2ff; color:#0b2a4a; border-bottom-left-radius:4px; }}
           .bubble.user {{ background:#0b93f6; color:#fff; border-bottom-right-radius:4px; }}
+          
+          /* Markdown Styles */
+          .bubble p {{ margin: 0 0 8px 0; }}
+          .bubble p:last-child {{ margin-bottom: 0; }}
+          .bubble ul, .bubble ol {{ margin: 4px 0 8px 20px; padding: 0; }}
+          .bubble li {{ margin-bottom: 4px; }}
+          .bubble pre {{ background: #f1f5f9; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 13px; margin: 8px 0; }}
+          .bubble code {{ font-family: Consolas, Monaco, 'Andale Mono', monospace; background: rgba(0,0,0,0.05); padding: 2px 4px; border-radius: 3px; }}
+          .bubble.user code {{ background: rgba(255,255,255,0.2); }}
+          .bubble strong {{ font-weight: 600; }}
+          .bubble h1, .bubble h2, .bubble h3 {{ margin: 12px 0 8px 0; font-weight: 600; line-height: 1.3; }}
+          .bubble h1 {{ font-size: 1.4em; }}
+          .bubble h2 {{ font-size: 1.2em; }}
+          .bubble h3 {{ font-size: 1.1em; }}
+          .bubble table {{ border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 14px; }}
+          .bubble th, .bubble td {{ border: 1px solid #cbd5e1; padding: 6px 10px; text-align: left; }}
+          .bubble th {{ background: #e2e8f0; }}
         </style>
       </head>
       <body>
@@ -146,21 +189,29 @@ def render_messages_iframe(iframe_height=800):
         </div>
 
         <script>
-          // Auto-scroll to bottom after rendering
-          (function() {{
+          // Parse Markdown for bot messages
+          document.addEventListener("DOMContentLoaded", function() {{
+            const bubbles = document.querySelectorAll('.bubble.bot');
+            bubbles.forEach(bubble => {{
+                // Get the raw text (which is safe/escaped HTML)
+                const rawText = bubble.innerText; 
+                // Parse with marked
+                bubble.innerHTML = marked.parse(rawText);
+            }});
+
+            // Auto-scroll to bottom
             const box = document.getElementById('chatBox');
             if (box) {{
-              // small timeout to ensure layout done
-              setTimeout(function(){{ box.scrollTop = box.scrollHeight; }}, 50);
+              setTimeout(function(){{ box.scrollTop = box.scrollHeight; }}, 100);
             }}
-          }})();
+          }});
         </script>
       </body>
     </html>
     """
 
     # Render inside iframe; height adjustable
-    components.html(html, height=iframe_height, scrolling=True)
+    components.html(html_content, height=iframe_height, scrolling=True)
 
 # ===== MAIN =====
 def main():
