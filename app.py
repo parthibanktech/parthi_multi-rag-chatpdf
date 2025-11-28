@@ -215,11 +215,12 @@ def render_messages_iframe(iframe_height=800):
 
 # ===== MAIN =====
 def main():
-    st.set_page_config(page_title="Chat with PDFs", layout="wide")
+    st.set_page_config(page_title="Parthi Multi RAG", layout="wide")
     _ensure_state()
 
     # Sidebar: upload, process, and stable input
     with st.sidebar:
+        st.title("🚀 Parthi Multi RAG")
         st.header("📂 Upload your PDFs")
         st.caption("⚠️ Max 50MB per file for best performance")
         docs = st.file_uploader("Drag and drop files here", accept_multiple_files=True, type=["pdf"])
